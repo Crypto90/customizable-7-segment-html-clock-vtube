@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aligned Retro 7-Segment Clock</title>
+    <style>
+        /* --- General Setup --- */
+        :root {
+            /* Define unit dimensions for easy scaling and calculation */
+            --segment-width: 80px; /* Outer width of a digit */
+            --segment-height: 150px; /* Outer height of a digit */
+            --segment-thickness: 10px; /* Thickness of each bar - DYNAMICALLY SET BY SLIDER */
+            --digit-gap: 10px; /* Space between digits - CONTROLLED BY SLIDER (Renamed for clarity) */
+			--segment-offset: 5px;
+			
+			--active-border-width: 0px; /* DYNAMICALLY SET BY SLIDER */
+			--active-border-color: #ffffff; /* DYNAMICALLY SET BY COLOR PICKER */
+            
+            /* NEW VARIABLES */
+            --body-bg: #000; /* Default background color */
+            --clock-scale: 1; /* NEW: Controls the overall scale (zoom) of the clock */
+            
+            /* VARIABLE FOR TRIANGULAR ENDING DEPTH (The angle) */
+            --triangular-depth: 10px; /* DYNAMICALLY SET BY SLIDER. Controls the cut depth. */
+
+            /* NEW VARIABLE FOR ROUNDED ENDING DEPTH (The radius) */
+            --rounded-depth: 5px; /* DYNAMICALLY SET BY NEW SLIDER. Controls the border-radius. */
+
+            /* NEW THICKNESS-DEPENDENT VARIABLES (For Colon Dots) */
+            --colon-dot-size: calc(1.5 * var(--segment-thickness));
+            --colon-dot-top: calc(var(--segment-height) * 0.25 - var(--colon-dot-size) / 2); /* Adjusted to center relative to thickness */
+            --colon-dot-bottom: calc(var(--segment-height) * 0.75 - var(--colon-dot-size) / 2); /* Adjusted to center relative to thickness */
+        }
+        
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: var(--body-bg); 
+            margin: 0;
+            overflow: hidden;
+            perspective: 1000px;
+            transition: background-color 0.3s;
+        }
+
+        body.transparent-bg {
+            background-color: transparent !important;
+        }
+
+        .clock-container {
+            position: relative;
+            transform-style: preserve-3d;
+            transform: rotateX(0deg) rotateY(0deg) scale(var(--clock-scale)); 
+        }
+
+        /* --- Clock Display (unchanged) --- */
+        .digital-clock {
+            display: flex;
+            gap: var(--digit-gap); 
+            padding: 0;
+        }
+
+        .digit {
+            position: relative;
+            width: var(--segment-width);
+            height: var(--segment-height);
+            background-color: transparent;
+        }
+        
+        .digit.hidden {
+            visibility: hidden;
+            width: 0;
+            margin-right: 0;
+            gap: 0;
+        }
+
+        .segment {
+            position: absolute;
+            background-color: rgba(255, 140, 0, 0.05);
+            transition: background-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+            clip-path: none !important;
+            border-radius: 0; 
+        }
+        
+        /* --- Segment End Styles (Uses --triangular-depth and NEW --rounded-depth) --- */
+        .segment.triangular {
+            /* Standard 7-segment triangular end caps, which align perfectly when segments touch */
+            border-radius: 0;
+        }
+
+        /* Horizontal Segments (a, d, g) - Left/Right ends are triangular */
+        .segment.triangular.a,
+        .segment.triangular.d,
+        .segment.triangular.g {
+            /* Cuts a triangle out of the corners, centered at 50% height */
+            clip-path: polygon(
+                var(--triangular-depth) 0%, /* Start after left depth */
+                calc(100% - var(--triangular-depth)) 0%, /* End before right depth */
+                100% 50%, /* Right tip */
+                calc(100% - var(--triangular-depth)) 100%, /* Bottom right corner */
+                var(--triangular-depth) 100%, /* Bottom left corner */
+                0% 50% /* Left tip */
+            ) !important;
+        }
+        
+        /* Vertical Segments (b, c, e, f) - Top/Bottom ends are triangular */
+        .segment.triangular.b, 
+        .segment.triangular.c, 
+        .segment.triangular.e, 
+        .segment.triangular.f {
+            /* Cuts a triangle out of the corners, centered at 50% width */
+            clip-path: polygon(
+                50% 0%, /* Top tip */
+                100% var(--triangular-depth), /* Top right corner */
+                100% calc(100% - var(--triangular-depth)), /* Bottom right corner */
+                50% 100%, /* Bottom tip */
+                0% calc(100% - var(--triangular-depth)), /* Bottom left corner */
+                0% var(--triangular-depth) /* Top left corner */
+            ) !important;
+        }
+
+        .segment.rounded {
+            clip-path: none !important;
+            /* UPDATED: Use the new --rounded-depth variable for border-radius */
+            border-radius: var(--rounded-depth);
+        }
+
+        .segment.square {
+            clip-path: none !important;
+            border-radius: 0;
+        }
+
+
+        /* --- Segment Positioning --- */
+		/* Horizontal Segments (a, d, g) */
+		.segment.a {
+			top: 0; 
+			left: calc(var(--segment-thickness) + var(--segment-offset));
+			width: calc(var(--segment-width) - 2 * (var(--segment-thickness) + var(--segment-offset)));
+			height: var(--segment-thickness); 
+		}
+		.segment.d {
+			bottom: 0;
+			left: calc(var(--segment-thickness) + var(--segment-offset));
+			width: calc(var(--segment-width) - 2 * (var(--segment-thickness) + var(--segment-offset)));
+			height: var(--segment-thickness);
+		}
+		.segment.g {
+			top: calc(50% - var(--segment-thickness)/2);
+			left: calc(var(--segment-thickness) + var(--segment-offset));
+			width: calc(var(--segment-width) - 2 * (var(--segment-thickness) + var(--segment-offset)));
+			height: var(--segment-thickness);
+		}
+		
+		/* Vertical Segments (b, c, e, f) */
+		.segment.b {
+			top: calc(var(--segment-thickness) + var(--segment-offset));
+			right: 0;
+			width: var(--segment-thickness);
+			height: calc((var(--segment-height) - 3*var(--segment-thickness))/2 - 2*var(--segment-offset));
+		}
+		.segment.c {
+			bottom: calc(var(--segment-thickness) + var(--segment-offset));
+			right: 0;
+			width: var(--segment-thickness);
+			height: calc((var(--segment-height) - 3*var(--segment-thickness))/2 - 2*var(--segment-offset));
+		}
+		.segment.e {
+			bottom: calc(var(--segment-thickness) + var(--segment-offset));
+			left: 0;
+			width: var(--segment-thickness);
+			height: calc((var(--segment-height) - 3*var(--segment-thickness))/2 - 2*var(--segment-offset));
+		}
+		.segment.f {
+			top: calc(var(--segment-thickness) + var(--segment-offset));
+			left: 0;
+			width: var(--segment-thickness);
+			height: calc((var(--segment-height) - 3*var(--segment-thickness))/2 - 2*var(--segment-offset));
+		}
+
+
+
+        /* --- Colon Styling --- */
+        .digit.colon {
+            width: 25px;
+        }
+
+        .digit.colon::before,
+        .digit.colon::after {
+            content: '';
+            position: absolute;
+            width: var(--colon-dot-size);
+            height: var(--colon-dot-size);
+            background-color: rgba(255, 140, 0, 0.05);
+            border-radius: 0; 
+            clip-path: none; 
+            left: 50%;
+            transform: translateX(-50%);
+            transition: background-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+        }
+        
+        .digit.colon.dot-round::before,
+        .digit.colon.dot-round::after {
+            /* ⭐ UPDATED: Use the rounded segment depth for the dots as well ⭐ */
+            border-radius: var(--rounded-depth); 
+            /* To ensure a full circle when rounded-depth is maxed out, use 50% for consistency */
+            clip-path: none;
+            transform: translateX(-50%);
+        }
+        
+        /* Note: Using var(--rounded-depth) here allows control, but to ensure a perfect circle/dot when desired,
+           the maximum radius is set to half the thickness. If rounded-depth = thickness/2, it's a circle.
+           If rounded-depth = 50% * dot-size, it's always a circle, but here we use var(--rounded-depth) for visual control.
+           The JavaScript ensures the max value for the slider is thickness/2.
+        */
+
+        .digit.colon.dot-square::before,
+        .digit.colon.dot-square::after {
+            border-radius: 0;
+            clip-path: none;
+            transform: translateX(-50%);
+        }
+
+        .digit.colon.dot-triangular::before,
+        .digit.colon.dot-triangular::after {
+            border-radius: 0;
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+            transform: translateX(-50%);
+        }
+        
+        .digit.colon.dot-diamond::before,
+        .digit.colon.dot-diamond::after {
+            border-radius: 0;
+            clip-path: none;
+            transform: translateX(-50%) rotate(45deg);
+        }
+
+        /* Use dynamic colon position */
+        .digit.colon::before { top: var(--colon-dot-top); }
+        .digit.colon::after { top: var(--colon-dot-bottom); }
+
+        .digit.colon.active::before,
+        .digit.colon.active::after {
+            background-color: var(--on-color);
+            box-shadow: 0 0 var(--glow-spread) var(--on-color-glow);
+			outline: var(--active-border-width) solid var(--active-border-color);
+			outline-offset: calc(var(--active-border-width) * -1);
+        }
+
+        /* --- Active Segment Styling (Glow) (Unchanged) --- */
+        .segment.active {
+            background-color: var(--on-color);
+            box-shadow: 0 0 var(--glow-spread) var(--on-color-glow);
+			outline: var(--active-border-width) solid var(--active-border-color);
+			outline-offset: calc(var(--active-border-width) * -1);
+        }
+
+        /* --- Settings Panel (unchanged) --- */
+        .settings-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: sans-serif;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 90vh;
+            overflow-y: auto;
+			overflow-x: hidden;
+        }
+
+        .settings-panel label {
+            display: flex; 
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        
+        .settings-panel .value-display {
+            font-weight: bold;
+            color: #FF8C00;
+        }
+        
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8em;
+            color: #999;
+            margin-top: -5px;
+        }
+
+        /* Toggle switch styling (unchanged) */
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+
+        .switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 20px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #FF8C00;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+    </style>
+</head>
+<body>
+    <div id="settingsPanel" class="settings-panel">
+        <h3>Settings ⚙️</h3>
+        
+        <div class="toggle-switch">
+            <label>Colon Blinking:</label>
+            <label class="switch">
+                <input type="checkbox" id="blinkToggle" checked>
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <hr style="width: 100%; border-top: 1px solid #333;">
+
+        <label for="zoomLevel">
+            <span>Zoom Level (x):</span>
+            <span id="zoomLevelValue" class="value-display">1.0</span>
+        </label>
+        <input type="range" id="zoomLevel" min="0.5" max="2.0" step="0.1" value="1.0">
+        
+        <label for="digitGap">
+            <span>Digit Spacing (px):</span>
+            <span id="digitGapValue" class="value-display">10</span>
+        </label>
+        <input type="range" id="digitGap" min="0" max="50" value="10">
+        
+        <label for="segmentThickness">
+            <span>Segment Thickness (px):</span>
+            <span id="segmentThicknessValue" class="value-display">10</span>
+        </label>
+        <input type="range" id="segmentThickness" min="2" max="20" value="10">
+        
+        <label for="segmentOffset">
+            <span>Segment Margin (px):</span>
+            <span id="segmentOffsetValue" class="value-display">5</span>
+        </label>
+        <input type="range" id="segmentOffset" min="-15" max="15" value="0">
+        
+		<hr>
+    
+		<label for="activeBorderWidth">Active Border Width</label>
+		<input type="range" id="activeBorderWidth" min="0" max="10" step="1">
+		<div class="slider-labels"><span>0</span><span id="activeBorderWidthValue">0</span><span>10</span></div>
+
+		<label for="activeBorderColorPicker">Active Border Color</label>
+		<input type="color" id="activeBorderColorPicker" value="#FFFFFF">
+		
+        <label for="triangularDepth">
+            <span>Triangular Depth (px):</span>
+            <span id="triangularDepthValue" class="value-display">10</span>
+        </label>
+        <input type="range" id="triangularDepth" min="0" max="20" value="10">
+
+        <label for="roundedDepth">
+            <span>Rounded Edge Depth (px):</span>
+            <span id="roundedDepthValue" class="value-display">5</span>
+        </label>
+        <input type="range" id="roundedDepth" min="0" max="10" value="5">
+        
+        <label for="segmentEndStyle">Segment Ends:</label>
+        <input type="range" id="segmentEndStyle" min="0" max="2" step="1" value="0">
+        <div class="slider-labels">
+            <span>Triangular</span>
+            <span>Round</span>
+            <span>Square</span>
+        </div>
+        
+        <label for="colonDotStyle">Colon Dot Style:</label>
+        <input type="range" id="colonDotStyle" min="0" max="3" step="1" value="0">
+        <div class="slider-labels">
+            <span>Round</span>
+            <span>Square</span>
+            <span>Triangular</span>
+            <span>Diamond</span> </div>
+        
+        <hr style="width: 100%; border-top: 1px solid #333;">
+
+        <label for="colorPicker">Digit Color:</label>
+        <input type="color" id="colorPicker" value="#FF8C00">
+
+        <label for="glowSpread">
+            <span>Glow Spread (px):</span>
+            <span id="glowSpreadValue" class="value-display">15</span>
+        </label>
+        <input type="range" id="glowSpread" min="0" max="30" value="15">
+
+        <hr style="width: 100%; border-top: 1px solid #333;">
+        
+        <label for="bgColorPicker">Body Background:</label>
+        <input type="color" id="bgColorPicker" value="#000000">
+
+        <div class="toggle-switch">
+            <label>Transparent Background:</label>
+            <label class="switch">
+                <input type="checkbox" id="transparentToggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+        
+        <hr style="width: 100%; border-top: 1px solid #333;">
+
+        <label for="perspectiveX">
+            <span>Perspective X (deg):</span>
+            <span id="perspectiveXValue" class="value-display">0</span>
+        </label>
+        <input type="range" id="perspectiveX" min="-90" max="90" value="0">
+
+        <label for="perspectiveY">
+            <span>Perspective Y (deg):</span>
+            <span><span id="perspectiveYValue" class="value-display">0</span></span>
+        </label>
+        <input type="range" id="perspectiveY" min="-90" max="90" value="0">
+    </div>
+
+    <div class="clock-container">
+        <div class="digital-clock" id="digitalClock">
+            </div>
+    </div>
+
+    <script>
+        // --- Configuration Data (unchanged) ---
+        const segmentPatterns = {
+            0: ['a', 'b', 'c', 'd', 'e', 'f'],
+            1: ['b', 'c'],
+            2: ['a', 'b', 'd', 'e', 'g'],
+            3: ['a', 'b', 'c', 'd', 'g'],
+            4: ['b', 'c', 'f', 'g'],
+            5: ['a', 'c', 'd', 'f', 'g'],
+            6: ['a', 'c', 'd', 'e', 'f', 'g'],
+            7: ['a', 'b', 'c'],
+            8: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+            9: ['a', 'b', 'c', 'd', 'f', 'g']
+        };
+        
+        const endStyleMap = {
+            '0': 'triangular',
+            '1': 'rounded',
+            '2': 'square'
+        };
+        
+        const dotStyleMap = {
+            '0': 'dot-round',
+            '1': 'dot-square',
+            '2': 'dot-triangular',
+            '3': 'dot-diamond'
+        };
+
+        // --- UPDATED: Default Settings Object ---
+        const SETTINGS_DEFAULTS = {
+            showSettings: true, // Switched to true for visibility in this context
+            blinkToggle: false,
+            digitGap: 25,
+            segmentThickness: 18, 
+            segmentOffset: -2, 
+            triangularDepth: 6, 
+            roundedDepth: 18, // Default depth/radius for rounded ends
+            segmentEndStyle: 1,
+            colonDotStyle: 0,
+            colorPicker: '#F9EA81',
+            glowSpread: 30,
+            perspectiveX: 18,
+            perspectiveY: -48,
+            bgColorPicker: '#000000',
+            transparentToggle: false,
+            zoomLevel: 1.50,
+			activeBorderWidth: 2,
+			activeBorderColor: '#ff5400',
+        };
+        
+        
+        const showSettings = SETTINGS_DEFAULTS.showSettings;
+        
+        
+        // --- Element Selection ---
+
+        const clockElement = document.getElementById('digitalClock');
+        const bodyElement = document.body;
+        
+        // Input elements
+        const colorPicker = document.getElementById('colorPicker');
+        const glowSpreadInput = document.getElementById('glowSpread');
+        const perspectiveXInput = document.getElementById('perspectiveX');
+        const perspectiveYInput = document.getElementById('perspectiveY');
+        const digitGapInput = document.getElementById('digitGap');
+        const segmentOffsetInput = document.getElementById('segmentOffset');
+        const segmentEndStyleInput = document.getElementById('segmentEndStyle');
+        const colonDotStyleInput = document.getElementById('colonDotStyle');
+        const blinkToggle = document.getElementById('blinkToggle');
+        
+        // NEW INPUT ELEMENTS
+        const bgColorPicker = document.getElementById('bgColorPicker');
+        const transparentToggle = document.getElementById('transparentToggle');
+        const zoomLevelInput = document.getElementById('zoomLevel'); 
+        const segmentThicknessInput = document.getElementById('segmentThickness'); 
+        const triangularDepthInput = document.getElementById('triangularDepth');
+        const roundedDepthInput = document.getElementById('roundedDepth'); 
+		
+		const activeBorderWidthInput = document.getElementById('activeBorderWidth');
+		const activeBorderColorPicker = document.getElementById('activeBorderColorPicker');
+		
+        const clockContainer = document.querySelector('.clock-container');
+
+        // Value display elements
+        const digitGapValue = document.getElementById('digitGapValue');
+        const segmentOffsetValue = document.getElementById('segmentOffsetValue');
+        const glowSpreadValue = document.getElementById('glowSpreadValue');
+        const perspectiveXValue = document.getElementById('perspectiveXValue');
+        const perspectiveYValue = document.getElementById('perspectiveYValue');
+        const zoomLevelValue = document.getElementById('zoomLevelValue'); 
+        const segmentThicknessValue = document.getElementById('segmentThicknessValue'); 
+        const triangularDepthValue = document.getElementById('triangularDepthValue');
+        const roundedDepthValue = document.getElementById('roundedDepthValue');
+		const activeBorderWidthValue = document.getElementById('activeBorderWidthValue');
+        // --- Setup and Initialization ---
+        
+        if (!showSettings) {
+            document.getElementById('settingsPanel').remove();
+        }
+
+        // UPDATED FUNCTION: Sets the default values on the HTML controls
+        function setControlDefaults() {
+            blinkToggle.checked = SETTINGS_DEFAULTS.blinkToggle;
+            digitGapInput.value = SETTINGS_DEFAULTS.digitGap;
+            segmentThicknessInput.value = SETTINGS_DEFAULTS.segmentThickness; 
+            segmentOffsetInput.value = SETTINGS_DEFAULTS.segmentOffset;
+            triangularDepthInput.value = SETTINGS_DEFAULTS.triangularDepth;
+            roundedDepthInput.value = SETTINGS_DEFAULTS.roundedDepth;
+            segmentEndStyleInput.value = SETTINGS_DEFAULTS.segmentEndStyle;
+            colonDotStyleInput.value = SETTINGS_DEFAULTS.colonDotStyle;
+            colorPicker.value = SETTINGS_DEFAULTS.colorPicker;
+            glowSpreadInput.value = SETTINGS_DEFAULTS.glowSpread;
+            perspectiveXInput.value = SETTINGS_DEFAULTS.perspectiveX;
+            perspectiveYInput.value = SETTINGS_DEFAULTS.perspectiveY;
+            activeBorderWidthInput.value = SETTINGS_DEFAULTS.activeBorderWidth;
+			activeBorderColorPicker.value = SETTINGS_DEFAULTS.activeBorderColor;
+            // NEW: Set background control defaults
+            bgColorPicker.value = SETTINGS_DEFAULTS.bgColorPicker;
+            transparentToggle.checked = SETTINGS_DEFAULTS.transparentToggle;
+            
+            // NEW: Set zoom default
+            zoomLevelInput.value = SETTINGS_DEFAULTS.zoomLevel;
+
+            // Set the initial maximum value for the rounded depth slider based on half the initial thickness
+            roundedDepthInput.max = SETTINGS_DEFAULTS.segmentThickness / 2;
+        }
+        
+        // UPDATED FUNCTION: Updates dimensions and also constrains rounded depth
+        function updateDigitDimensions() {
+            const thickness = parseFloat(segmentThicknessInput.value);
+            const triangularDepth = triangularDepthInput.value;
+            const roundedDepth = parseFloat(roundedDepthInput.value);
+
+            // Update the MAX value of the rounded depth slider based on the current thickness
+            const maxRoundedDepth = thickness;
+            roundedDepthInput.max = maxRoundedDepth;
+
+            // Ensure the value doesn't exceed the new max
+            if (roundedDepth > maxRoundedDepth) {
+                roundedDepthInput.value = maxRoundedDepth;
+            }
+
+            // Update CSS variables
+            document.documentElement.style.setProperty('--segment-thickness', `${thickness}px`);
+            document.documentElement.style.setProperty('--triangular-depth', `${triangularDepth}px`);
+            document.documentElement.style.setProperty('--rounded-depth', `${roundedDepthInput.value}px`);
+
+            // Recalculate and set the thickness-dependent colon dot size/position
+            const segmentHeight = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--segment-height'));
+            const dotSize = thickness * 1.5;
+            const dotCenterTop = segmentHeight * 0.25;
+            const dotCenterBottom = segmentHeight * 0.75;
+            
+            document.documentElement.style.setProperty('--colon-dot-size', `${dotSize}px`);
+            document.documentElement.style.setProperty('--colon-dot-top', `${dotCenterTop - dotSize/2}px`);
+            document.documentElement.style.setProperty('--colon-dot-bottom', `${dotCenterBottom - dotSize/2}px`);
+        }
+
+
+        function createDigitElement() {
+            const digitDiv = document.createElement('div');
+            digitDiv.classList.add('digit');
+            ['a', 'b', 'c', 'd', 'e', 'f', 'g'].forEach(segmentName => {
+                const segment = document.createElement('div');
+                const segmentNames = segmentName.split(' ');
+                segment.classList.add('segment', ...segmentNames);
+                digitDiv.appendChild(segment);
+            });
+            return digitDiv;
+        }
+
+        // Populate the clock with 4 digits and 1 colon placeholder
+        for (let i = 0; i < 4; i++) {
+            const digit = createDigitElement();
+            if (i === 0) {
+                digit.id = 'H1';
+            }
+            clockElement.appendChild(digit);
+            if (i === 1) { 
+                const colonDiv = document.createElement('div');
+                colonDiv.classList.add('digit', 'colon');
+                clockElement.appendChild(colonDiv);
+            }
+        }
+
+        // --- Style and Perspective Functions ---
+
+        function hexToRgba(hex, alpha) {
+            let r = 0, g = 0, b = 0;
+            if (hex.length === 4) {
+                r = parseInt(hex[1] + hex[1], 16);
+                g = parseInt(hex[2] + hex[2], 16);
+                b = parseInt(hex[3] + hex[3], 16);
+            } else if (hex.length === 7) {
+                r = parseInt(hex.substring(1, 3), 16);
+                g = parseInt(hex.substring(3, 5), 16);
+                b = parseInt(hex.substring(5, 7), 16);
+            }
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        
+        function updateSegmentEndStyle() {
+            const styleIndex = segmentEndStyleInput.value;
+            const styleClass = endStyleMap[styleIndex];
+            
+            const allSegments = clockElement.querySelectorAll('.segment');
+            
+            // 1. Remove all style classes
+            allSegments.forEach(segment => {
+                segment.classList.remove('triangular', 'rounded', 'square');
+            });
+            
+            // 2. Add the selected style class
+            allSegments.forEach(segment => {
+                segment.classList.add(styleClass);
+            });
+        }
+        
+        function updateColonDotStyle() {
+            const styleIndex = colonDotStyleInput.value;
+            const styleClass = dotStyleMap[styleIndex];
+            
+            const colonElement = clockElement.querySelector('.digit.colon');
+            if (colonElement) {
+                // 1. Remove all colon style classes
+                colonElement.classList.remove('dot-round', 'dot-square', 'dot-triangular', 'dot-diamond');
+                
+                // 2. Add the selected style class
+                colonElement.classList.add(styleClass);
+            }
+        }
+        
+        // UPDATED: Added call to updateDigitDimensions and roundedDepthValue update
+        function updateStyles() {
+			const currentActiveBorderWidth = activeBorderWidthInput.value;
+			const currentActiveBorderColor = activeBorderColorPicker.value;
+            const hexColor = colorPicker.value;
+            const rgbaColor = hexToRgba(hexColor, 1);
+            const rgbaGlowColor = hexToRgba(hexColor, 0.8);
+            const currentGlowSpread = glowSpreadInput.value;
+            const currentDigitGap = digitGapInput.value;
+            const currentZoomLevel = zoomLevelInput.value; 
+			const segmentOffset = segmentOffsetInput.value;
+
+            // **1. Update Dimensions First (Includes thickness, triangular, and rounded depth)**
+            updateDigitDimensions(); 
+
+            // **2. Update other CSS Variables**
+            document.documentElement.style.setProperty('--on-color', rgbaColor);
+            document.documentElement.style.setProperty('--on-color-glow', rgbaGlowColor);
+            document.documentElement.style.setProperty('--glow-spread', `${currentGlowSpread}px`);
+            document.documentElement.style.setProperty('--digit-gap', `${currentDigitGap}px`);
+            document.documentElement.style.setProperty('--clock-scale', currentZoomLevel); 
+			document.documentElement.style.setProperty('--segment-offset', `${segmentOffset}px`);
+			document.documentElement.style.setProperty('--active-border-width', `${currentActiveBorderWidth}px`);
+			document.documentElement.style.setProperty('--active-border-color', currentActiveBorderColor);
+
+
+            // **3. Update Segment/Dot Styles**
+            updateSegmentEndStyle();
+            updateColonDotStyle();
+
+            // **4. Update Value Displays**
+            glowSpreadValue.innerText = currentGlowSpread;
+            digitGapValue.innerText = currentDigitGap;
+            segmentThicknessValue.innerText = segmentThicknessInput.value; 
+            segmentOffsetValue.innerText = segmentOffsetInput.value;
+            triangularDepthValue.innerText = triangularDepthInput.value;
+            roundedDepthValue.innerText = roundedDepthInput.value;
+            zoomLevelValue.innerText = currentZoomLevel; 
+			segmentOffsetValue.innerText = segmentOffset;
+			activeBorderWidthValue.innerText = currentActiveBorderWidth;
+        }
+        
+        // NEW FUNCTION: Update the body's background style (unchanged)
+        function updateBackground() {
+            const bgColor = bgColorPicker.value;
+            const isTransparent = transparentToggle.checked;
+            
+            if (isTransparent) {
+                bodyElement.classList.add('transparent-bg');
+            } else {
+                bodyElement.classList.remove('transparent-bg');
+                document.documentElement.style.setProperty('--body-bg', bgColor);
+            }
+        }
+
+        // UPDATED: Only updates rotation, as scale is handled in updateStyles
+        function updatePerspective() {
+            const rotateX = perspectiveXInput.value;
+            const rotateY = perspectiveYInput.value;
+            
+            // Update Transformation (only rotation)
+            clockContainer.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(var(--clock-scale))`;
+
+            // Update Value Displays
+            perspectiveXValue.innerText = rotateX;
+            perspectiveYValue.innerText = rotateY;
+        }
+        
+        // --- Clock Logic Functions (unchanged) ---
+
+        function setDigit(digitElement, number) {
+            const segments = digitElement.querySelectorAll('.segment');
+            segments.forEach(segment => segment.classList.remove('active'));
+
+            if (segmentPatterns[number]) {
+                segmentPatterns[number].forEach(segmentName => {
+                    digitElement.querySelector(`.segment.${segmentName}`).classList.add('active');
+                });
+            }
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const colonElement = clockElement.querySelector('.digit.colon');
+
+            // 1. Handle Leading Zero for Hours
+            const H1_element = document.getElementById('H1');
+            let H1_digit, H2_digit;
+
+            if (hours < 10) {
+                H1_digit = 0;
+                H2_digit = hours;
+                H1_element.classList.add('hidden');
+            } else {
+                H1_digit = Math.floor(hours / 10);
+                H2_digit = hours % 10;
+                H1_element.classList.remove('hidden');
+            }
+
+            const timeDigits = [H1_digit, H2_digit, parseInt(minutes[0]), parseInt(minutes[1])];
+            const digitElements = clockElement.querySelectorAll('.digit:not(.colon)');
+
+            // Update digits
+            setDigit(digitElements[0], timeDigits[0]);
+            setDigit(digitElements[1], timeDigits[1]);
+            setDigit(digitElements[2], timeDigits[2]);
+            setDigit(digitElements[3], timeDigits[3]);
+
+            // 2. Colon Blink/Static Toggle Logic
+            if (blinkToggle.checked) {
+                // Blinking mode
+                if (now.getSeconds() % 2 === 0) {
+                    colonElement.classList.add('active');
+                } else {
+                    colonElement.classList.remove('active');
+                }
+            } else {
+                // Always glow mode
+                colonElement.classList.add('active');
+            }
+            
+        }
+        
+        // --- Event Listeners and Execution ---
+
+        colorPicker.addEventListener('input', updateStyles);
+        
+        // Listeners for sliders that change global styles
+        glowSpreadInput.addEventListener('input', updateStyles);
+        digitGapInput.addEventListener('input', updateStyles);
+        segmentThicknessInput.addEventListener('input', updateStyles); 
+        segmentOffsetInput.addEventListener('input', updateStyles);
+        segmentEndStyleInput.addEventListener('input', updateStyles);
+        colonDotStyleInput.addEventListener('input', updateStyles);
+        zoomLevelInput.addEventListener('input', updateStyles); 
+        triangularDepthInput.addEventListener('input', updateStyles); 
+        roundedDepthInput.addEventListener('input', updateStyles); 
+        activeBorderWidthInput.addEventListener('input', updateStyles);
+		activeBorderColorPicker.addEventListener('input', updateStyles);
+		
+        // NEW LISTENERS for background controls
+        bgColorPicker.addEventListener('input', updateBackground);
+        transparentToggle.addEventListener('change', updateBackground);
+        
+        // Listeners for sliders that change perspective
+        perspectiveXInput.addEventListener('input', updatePerspective);
+        perspectiveYInput.addEventListener('input', updatePerspective);
+        
+        // When toggle state changes, the next updateClock call will apply the new state
+        blinkToggle.addEventListener('change', () => {
+             if (!blinkToggle.checked) {
+                 clockElement.querySelector('.digit.colon').classList.add('active');
+             }
+        });
+
+        // Initial setup sequence:
+        setControlDefaults(); // 1. Set the initial values on the HTML controls
+        updateBackground();   // 2. Apply background settings
+        updateStyles();       // 3. Apply all style settings (color, gaps, segment style, and zoom/thickness)
+        updatePerspective();  // 4. Apply perspective settings
+        updateClock();        // 5. Start the clock display
+
+        // Update clock every second
+        setInterval(updateClock, 1000);
+    </script>
+</body>
+</html>
